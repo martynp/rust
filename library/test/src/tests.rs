@@ -13,6 +13,7 @@ use crate::{
         DynTestName,
         MetricMap,
         RunIgnored,
+        RunIntegration,
         RunStrategy,
         ShouldPanic,
         StaticTestName,
@@ -39,6 +40,7 @@ impl TestOpts {
             force_run_in_process: false,
             exclude_should_panic: false,
             run_ignored: RunIgnored::No,
+            run_integration: RunIntegration::Yes,
             run_tests: false,
             bench_benchmarks: false,
             logfile: None,
@@ -831,4 +833,147 @@ fn test_dyn_bench_returning_err_fails_when_run_as_test() {
     run_tests(&TestOpts { run_tests: true, ..TestOpts::new() }, vec![desc], notify).unwrap();
     let result = rx.recv().unwrap().result;
     assert_eq!(result, TrFailed);
+}
+
+#[test]
+pub fn do_not_run_integration_test_if_excluded() {
+    fn f() -> Result<(), String> {
+        panic!();
+    }
+    let desc = TestDescAndFn {
+        desc: TestDesc {
+            name: StaticTestName("whatever"),
+            ignore: true,
+            ignore_message: None,
+            should_panic: ShouldPanic::No,
+            compile_fail: false,
+            no_run: false,
+            test_type: TestType::IntegrationTest,
+        },
+        testfn: DynTestFn(Box::new(f)),
+    };
+    let (tx, rx) = channel();
+    run_test(&TestOpts::new(), false, TestId(0), desc, RunStrategy::InProcess, tx);
+    let result = rx.recv().unwrap().result;
+    assert_ne!(result, TrOk);
+}
+
+
+
+fn one_intregration_one_unit_test_one_unknown() -> Vec<TestDescAndFn> {
+    vec![
+        TestDescAndFn {
+            desc: TestDesc {
+                name: StaticTestName("1"),
+                ignore: false,
+                ignore_message: None,
+                should_panic: ShouldPanic::No,
+                compile_fail: false,
+                no_run: false,
+                test_type: TestType::IntegrationTest,
+            },
+            testfn: DynTestFn(Box::new(move || Ok(()))),
+        },
+        TestDescAndFn {
+            desc: TestDesc {
+                name: StaticTestName("2"),
+                ignore: false,
+                ignore_message: None,
+                should_panic: ShouldPanic::No,
+                compile_fail: false,
+                no_run: false,
+                test_type: TestType::UnitTest,
+            },
+            testfn: DynTestFn(Box::new(move || Ok(()))),
+        },
+        TestDescAndFn {
+            desc: TestDesc {
+                name: StaticTestName("3"),
+                ignore: false,
+                ignore_message: None,
+                should_panic: ShouldPanic::No,
+                compile_fail: false,
+                no_run: false,
+                test_type: TestType::Unknown,
+            },
+            testfn: DynTestFn(Box::new(move || Ok(()))),
+        },
+    ]
+}
+
+#[test]
+fn parse_exclude_integration_flag() {
+    let args = vec!["progname".to_string(), "filter".to_string(), "--exclude-integration".to_string()];
+    let opts = parse_opts(&args).unwrap().unwrap();
+    assert_eq!(opts.run_integration, RunIntegration::No);
+}
+
+#[test]
+fn parse_integration_flag() {
+    let args = vec!["progname".to_string(), "filter".to_string(), "--integration".to_string()];
+    let opts = parse_opts(&args).unwrap().unwrap();
+    assert_eq!(opts.run_integration, RunIntegration::Only);
+}
+
+#[test]
+fn parse_integration_flags_not_set() {
+    let args = vec!["progname".to_string(), "filter".to_string()];
+    let opts = parse_opts(&args).unwrap().unwrap();
+    assert_eq!(opts.run_integration, RunIntegration::Yes);
+}
+
+#[test]
+pub fn filter_for_exclude_integration_option() {
+    // The filter should filter out all the integration tests
+
+    let mut opts = TestOpts::new();
+    opts.run_tests = true;
+    opts.run_integration = RunIntegration::No;
+
+    let tests = one_intregration_one_unit_test_one_unknown();
+    let filtered = filter_tests(&opts, tests);
+
+    assert_eq!(filtered.len(), 2);
+    assert_eq!(filtered[0].desc.name.to_string(), "2");
+    assert_eq!(filtered[0].desc.test_type, TestType::UnitTest);
+    assert_eq!(filtered[1].desc.name.to_string(), "3");
+    assert_eq!(filtered[1].desc.test_type, TestType::Unknown);
+}
+
+#[test]
+pub fn filter_for_integration_option() {
+    // When we run integrations tests the test filter should filter out all the
+    // non-integration tests
+
+    let mut opts = TestOpts::new();
+    opts.run_tests = true;
+    opts.run_integration = RunIntegration::Only;
+
+    let tests = one_intregration_one_unit_test_one_unknown();
+    let filtered = filter_tests(&opts, tests);
+
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].desc.name.to_string(), "1");
+    assert_eq!(filtered[0].desc.test_type, TestType::IntegrationTest);
+}
+
+#[test]
+pub fn filter_for_integration_yes_option() {
+    // When we run integrations tests the test filter should filter out all the
+    // non-integration tests
+
+    let mut opts = TestOpts::new();
+    opts.run_tests = true;
+    opts.run_integration = RunIntegration::Yes;
+
+    let tests = one_intregration_one_unit_test_one_unknown();
+    let filtered = filter_tests(&opts, tests);
+
+    assert_eq!(filtered.len(), 3);
+    assert_eq!(filtered[0].desc.name.to_string(), "1");
+    assert_eq!(filtered[0].desc.test_type, TestType::IntegrationTest);
+    assert_eq!(filtered[1].desc.name.to_string(), "2");
+    assert_eq!(filtered[1].desc.test_type, TestType::UnitTest);
+    assert_eq!(filtered[2].desc.name.to_string(), "3");
+    assert_eq!(filtered[2].desc.test_type, TestType::Unknown);
 }

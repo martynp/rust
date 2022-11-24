@@ -45,6 +45,14 @@ pub enum RunIgnored {
     Only,
 }
 
+/// Whether integration tests should be run or not
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum RunIntegration {
+    Yes,
+    No,
+    Only,
+}
+
 #[derive(Clone, Copy)]
 pub enum RunStrategy {
     /// Runs the test in the current process, and sends the result back over the

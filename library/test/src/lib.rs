@@ -26,7 +26,7 @@
 // Public reexports
 pub use self::bench::{black_box, Bencher};
 pub use self::console::run_tests_console;
-pub use self::options::{ColorConfig, Options, OutputFormat, RunIgnored, ShouldPanic};
+pub use self::options::{ColorConfig, Options, OutputFormat, RunIgnored, RunIntegration, ShouldPanic};
 pub use self::types::TestName::*;
 pub use self::types::*;
 pub use self::ColorConfig::*;
@@ -40,7 +40,7 @@ pub mod test {
         cli::{parse_opts, TestOpts},
         filter_tests,
         helpers::metrics::{Metric, MetricMap},
-        options::{Options, RunIgnored, RunStrategy, ShouldPanic},
+        options::{Options, RunIgnored, RunIntegration, RunStrategy, ShouldPanic},
         run_test, test_main, test_main_static,
         test_result::{TestResult, TrFailed, TrFailedMsg, TrIgnored, TrOk},
         time::{TestExecTime, TestTimeOptions},
@@ -490,6 +490,17 @@ pub fn filter_tests(opts: &TestOpts, tests: Vec<TestDescAndFn>) -> Vec<TestDescA
             filtered.iter_mut().for_each(|test| test.desc.ignore = false);
         }
         RunIgnored::No => {}
+    }
+
+    // Exclude integration tests if instructed
+    match opts.run_integration {
+        RunIntegration::Yes => {},
+        RunIntegration::No => {
+            filtered.retain(|test| test.desc.test_type != TestType::IntegrationTest);
+        },
+        RunIntegration::Only => {
+            filtered.retain(|test| test.desc.test_type == TestType::IntegrationTest);
+        }
     }
 
     filtered

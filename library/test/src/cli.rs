@@ -3,7 +3,7 @@
 use std::env;
 use std::path::PathBuf;
 
-use super::options::{ColorConfig, Options, OutputFormat, RunIgnored};
+use super::options::{ColorConfig, Options, OutputFormat, RunIgnored, RunIntegration};
 use super::time::TestTimeOptions;
 use std::io::{self, IsTerminal};
 
@@ -15,6 +15,7 @@ pub struct TestOpts {
     pub force_run_in_process: bool,
     pub exclude_should_panic: bool,
     pub run_ignored: RunIgnored,
+    pub run_integration: RunIntegration,
     pub run_tests: bool,
     pub bench_benchmarks: bool,
     pub logfile: Option<PathBuf>,
@@ -48,6 +49,8 @@ fn optgroups() -> getopts::Options {
     let mut opts = getopts::Options::new();
     opts.optflag("", "include-ignored", "Run ignored and not ignored tests")
         .optflag("", "ignored", "Run only ignored tests")
+        .optflag("", "exclude-integration", "Exclude integration tests")
+        .optflag("", "integration", "Run only integration tests")
         .optflag("", "force-run-in-process", "Forces tests to run in-process when panic=abort")
         .optflag("", "exclude-should-panic", "Excludes tests marked as should_panic")
         .optflag("", "test", "Run tests and not benchmarks")
@@ -259,6 +262,7 @@ fn parse_opts_impl(matches: getopts::Matches) -> OptRes {
     let shuffle_seed = get_shuffle_seed(&matches, allow_unstable)?;
 
     let include_ignored = matches.opt_present("include-ignored");
+    let exclude_integration = matches.opt_present("exclude-integration");
     let quiet = matches.opt_present("quiet");
     let exact = matches.opt_present("exact");
     let list = matches.opt_present("list");
@@ -269,6 +273,7 @@ fn parse_opts_impl(matches: getopts::Matches) -> OptRes {
 
     let logfile = get_log_file(&matches)?;
     let run_ignored = get_run_ignored(&matches, include_ignored)?;
+    let run_integration = get_run_integration(&matches, exclude_integration)?;
     let filters = matches.free.clone();
     let nocapture = get_nocapture(&matches)?;
     let test_threads = get_test_threads(&matches)?;
@@ -284,6 +289,7 @@ fn parse_opts_impl(matches: getopts::Matches) -> OptRes {
         force_run_in_process,
         exclude_should_panic,
         run_ignored,
+        run_integration,
         run_tests,
         bench_benchmarks,
         logfile,
@@ -463,6 +469,19 @@ fn get_run_ignored(matches: &getopts::Matches, include_ignored: bool) -> OptPart
     };
 
     Ok(run_ignored)
+}
+
+fn get_run_integration(matches: &getopts::Matches, exclude_integration: bool) -> OptPartRes<RunIntegration> {
+    let run_integration = match(exclude_integration, matches.opt_present("integration")) {
+        (true, true) => {
+            return Err("the options --exclude-integration and --integration are mutually exclusive".into());
+        },
+        (true, false) => RunIntegration::No,
+        (false, true) => RunIntegration::Only,
+        (false, false) => RunIntegration::Yes,
+    };
+
+    Ok(run_integration)
 }
 
 fn get_allow_unstable(matches: &getopts::Matches) -> OptPartRes<bool> {
